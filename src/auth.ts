@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import { config } from "./config";
+import { config } from "./config.js";
 
 export function getUserIdFromAuth(req: Request): string | null {
   const auth = req.header("authorization") || "";
@@ -9,4 +9,3 @@ export function getUserIdFromAuth(req: Request): string | null {
   if (token === config.devToken) return "dev-user";
   return null;
 }
-

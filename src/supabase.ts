@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { config } from "./config";
+import { config } from "./config.js";
 
 export const supabaseAdmin: SupabaseClient | null =
   config.supabaseUrl && config.supabaseServiceRoleKey

@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import mime from "mime";
-import { config } from "./config";
-import { uploadBufferToStorage, insertGenerationTask, updateGenerationTask, insertGenerationOutput, supabaseAdmin } from "./supabase";
+import { config } from "./config.js";
+import { uploadBufferToStorage, insertGenerationTask, updateGenerationTask, insertGenerationOutput, supabaseAdmin } from "./supabase.js";
 function compilePrompt(base, opts) {
     const desc = [];
     if (base)

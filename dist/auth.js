@@ -1,4 +1,4 @@
-import { config } from "./config";
+import { config } from "./config.js";
 export function getUserIdFromAuth(req) {
     const auth = req.header("authorization") || "";
     const m = auth.match(/^Bearer\s+(.+)$/i);

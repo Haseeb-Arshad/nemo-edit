@@ -1,11 +1,11 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
-import { config, assertEnv } from "./config";
-import { supabaseAdmin, insertGenerationTask, updateGenerationTask, getPublicUrl, downloadToBase64, signedUrl } from "./supabase";
+import { config, assertEnv } from "./config.js";
+import { supabaseAdmin, insertGenerationTask, updateGenerationTask, getPublicUrl, downloadToBase64, signedUrl } from "./supabase.js";
 import { randomUUID } from "crypto";
-import { runImmediateGeneration, runEditGeneration } from "./genai";
-import { getUserIdFromAuth } from "./auth";
+import { runImmediateGeneration, runEditGeneration } from "./genai.js";
+import { getUserIdFromAuth } from "./auth.js";
 
 assertEnv();
 
