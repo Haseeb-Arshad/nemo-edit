@@ -213,6 +213,119 @@ app.get("/tasks/:id", async (req, res) => {
         res.status(500).json({ error: e?.message || "Unknown error" });
     }
 });
+// Compatibility endpoints for NanoBananaApi used by the Android app
+// POST /v1/edits  { imageUrl?: string, maskUrl?: string, prompt: string, ... }
+app.post("/v1/edits", async (req, res) => {
+    try {
+        const userId = getUserIdFromAuth(req);
+        if (!userId)
+            return res.status(401).json({ error: "Unauthorized" });
+        if (!supabaseAdmin)
+            return res.status(500).json({ error: "Supabase not configured" });
+        const { imageUrl, maskUrl, prompt } = req.body || {};
+        if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+            return res.status(400).json({ error: "prompt is required" });
+        }
+        if (!imageUrl || typeof imageUrl !== "string") {
+            return res.status(400).json({ error: "imageUrl is required" });
+        }
+        // Create a task first
+        const task = await insertGenerationTask({
+            status: "running",
+            style_id: null,
+            prompt_id: null,
+            prompt,
+            params: { userId, provider: config.provider, compat: "v1/edits", imageUrl, maskUrl },
+            input_image_path: null,
+            output_text: null,
+            error: null,
+        });
+        // Fire-and-forget background job: download image(s) and run edit
+        (async () => {
+            const reqId = req.__reqId || task.id;
+            try {
+                const [imgRes, maskRes] = await Promise.all([
+                    fetch(imageUrl).catch(() => null),
+                    maskUrl ? fetch(maskUrl).catch(() => null) : Promise.resolve(null),
+                ]);
+                if (!imgRes || !imgRes.ok)
+                    throw new Error(`Failed to fetch imageUrl (${imgRes?.status || "no response"})`);
+                const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+                const imgMime = (imgRes.headers.get("content-type") || "image/jpeg").split(";")[0];
+                const maskBuf = maskRes && maskRes.ok ? Buffer.from(await maskRes.arrayBuffer()) : null;
+                console.log(`[req ${reqId}] /v1/edits downloaded inputs`, { taskId: task.id, imgBytes: imgBuf.byteLength, hasMask: !!maskBuf });
+                const { outputs, text } = await runEditGeneration({
+                    userId,
+                    prompt,
+                    imageBuffer: imgBuf,
+                    imageMime: imgMime,
+                    maskBuffer: maskBuf,
+                    taskIdHint: task.id,
+                });
+                await updateGenerationTask(task.id, {
+                    status: "succeeded",
+                    output_text: text || null,
+                    completed_at: new Date().toISOString(),
+                });
+                console.log(`[req ${reqId}] /v1/edits generation done`, { taskId: task.id, outputs: outputs?.length || 0 });
+            }
+            catch (err) {
+                await updateGenerationTask(task.id, {
+                    status: "failed",
+                    error: err?.message || String(err),
+                    completed_at: new Date().toISOString(),
+                });
+                console.error(`[v1/edits] generation failed`, { taskId: task.id, error: err?.message || String(err) });
+            }
+        })();
+        return res.json({ id: task.id, status: "running", resultUrl: null });
+    }
+    catch (e) {
+        res.status(500).json({ error: e?.message || "Unknown error" });
+    }
+});
+// GET /v1/jobs/:id  -> { id, status, resultUrl }
+app.get("/v1/jobs/:id", async (req, res) => {
+    try {
+        const userId = getUserIdFromAuth(req);
+        if (!userId)
+            return res.status(401).json({ error: "Unauthorized" });
+        if (!supabaseAdmin)
+            return res.status(500).json({ error: "Supabase not configured" });
+        const id = req.params.id;
+        const { data: task } = await supabaseAdmin.from("generation_tasks").select("*").eq("id", id).maybeSingle();
+        if (!task)
+            return res.status(404).json({ error: "Not found" });
+        const paramsUser = task.params?.userId || null;
+        if (paramsUser && paramsUser !== userId)
+            return res.status(404).json({ error: "Not found" });
+        let status = task.status;
+        if (status === "running")
+            status = "running"; // keep as-is
+        if (status === "succeeded")
+            status = "done";
+        if (status === "failed")
+            status = "failed";
+        if (status === "queued")
+            status = "queued";
+        let resultUrl = null;
+        if (task.status === "succeeded") {
+            const { data: outputs } = await supabaseAdmin
+                .from("generation_outputs")
+                .select("storage_bucket, storage_path, index")
+                .eq("task_id", id)
+                .order("index", { ascending: true })
+                .limit(1);
+            const first = outputs?.[0];
+            if (first)
+                resultUrl = getPublicUrl({ bucket: first.storage_bucket, path: first.storage_path });
+        }
+        return res.json({ id, status, resultUrl });
+    }
+    catch (e) {
+        res.status(500).json({ error: e?.message || "Unknown error" });
+    }
+});
 // Feature-parity: image edit job endpoints
 // POST /api/v1/edit
 app.post("/api/v1/edit", upload.fields([{ name: "file", maxCount: 1 }, { name: "mask", maxCount: 1 }]), async (req, res) => {
